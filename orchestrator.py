@@ -330,10 +330,6 @@ Action: [tool_name(arguments)] or Final Answer: [answer]"""
         return f"Reached maximum iterations ({self.max_iterations}). Last observations: {'; '.join(self.observation_history[-3:])}"
 
 
-def get_weather(location: str) -> str:
-    """Placeholder weather function. Replace with actual weather API integration."""
-    return f"Weather data for {location} would be retrieved here. (Placeholder)"
-
 
 def execute_python_code(code: str) -> str:
     """
@@ -384,9 +380,9 @@ def execute_python_code(code: str) -> str:
         return "\n".join(output_parts) if output_parts else "Code executed successfully (no output)"
     
     except subprocess.TimeoutExpired:
-        return "Error: Execution timed out after 10 seconds"
+        return "Error: Execution timed out after 10 seconds - fix code and try again"
     except Exception as e:
-        return f"Error executing code: {str(e)}"
+        return f"Error executing code: {str(e)} - fix and try again"
     finally:
         # Clean up temporary file
         try:
@@ -394,7 +390,9 @@ def execute_python_code(code: str) -> str:
         except:
             pass
 
-
+def get_ndvi():
+    """Get the NDVI of the bounding box."""
+    return "NDVI: 0.5"
 class AgriAgent(REACTAgent):
     """
     An agent that is specialized in agriculture.
@@ -402,11 +400,7 @@ class AgriAgent(REACTAgent):
     def __init__(self, api_key: str, model: str = "openai/gpt-4o-mini"):
         super().__init__(api_key, model)
         # Register tools using the proper method
-        self.register_tool(Tool(
-            name="get_weather",
-            description="Get the weather for a given location. Usage: get_weather(location='San Francisco')",
-            func=get_weather
-        ))
+        
         self.register_tool(Tool(
             name="execute_code",
             description="Execute Python code in a safe subprocess. Returns stdout and stderr. Usage: execute_code(code='print(\"def fib(n):\\n    a, b = 0, 1\\n    for _ in range(n):\\n        a, b = b, a + b\\n    return a\\nprint(\"Fib(10):\", fib(10))')",
@@ -442,7 +436,7 @@ def main():
     
     
     # Example task
-    task = "Write and test a python script that computes the n'th fibonacci number using your tools"
+    task = "Write and test a python script that reads the file README.md and returns the number of lines in the file"
     
     print(f"Task: {task}\n")
     print("Running REACT agent...\n")

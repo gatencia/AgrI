@@ -88,4 +88,3 @@ agent.register_tool(custom_tool)
 
 - `max_iterations`: Maximum number of REACT loop iterations (default: 10)
 - `model`: OpenRouter model to use (default: "openai/gpt-4o-mini")
-
