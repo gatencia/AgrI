@@ -217,6 +217,14 @@ class AgriAgent(REACTAgent):
     def add_bounding_point(self, point: tuple[float, float]):
         """Add a bounding point to the agent."""
         self.bounding_points.append(point)
+    def get_square_bounding_box(self) -> tuple[float, float, float, float]:
+        """Get the square bounding box of the agent."""
+        if len(self.bounding_points) < 2:
+            return None
+        xs, ys = zip(*self.bounding_points)
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        return (min_x, min_y, max_x - min_x, max_y - min_y)
 
 def main():
     """Example usage of the REACT agent."""
