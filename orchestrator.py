@@ -56,7 +56,7 @@ class REACTAgent:
     4. Repeat until task is complete
     """
     
-    def __init__(self, api_key: str, model: str = "openai/gpt-5-mini"):
+    def __init__(self, api_key: str, model: str = "moonshotai/kimi-k2-thinking"):
         self.api_key = api_key
         self.model = model
         self.api_url = "https://openrouter.ai/api/v1/chat/completions"
@@ -91,32 +91,159 @@ class REACTAgent:
     def _extract_action(self, text: str) -> Optional[Action]:
         """Extract action from LLM response."""
         # Look for action pattern: Action: tool_name(arg1=value1, arg2=value2)
-        action_pattern = r'Action:\s*(\w+)\s*\(([^)]*)\)'
-        match = re.search(action_pattern, text)
+        action_pattern = r'Action:\s*(\w+)\s*\('
+        match = re.search(action_pattern, text, re.DOTALL)
         
         if not match:
             return None
         
         tool_name = match.group(1)
-        args_str = match.group(2)
+        # Find the opening parenthesis position
+        start_pos = match.end()
         
-        # Parse arguments
+        # Find the matching closing parenthesis by counting nested parentheses
+        paren_count = 1
+        i = start_pos
+        in_string = False
+        string_char = None
+        escape_next = False
+        
+        while i < len(text) and paren_count > 0:
+            if escape_next:
+                escape_next = False
+            elif text[i] == '\\' and in_string:
+                escape_next = True
+            elif text[i] in ['"', "'"] and not escape_next:
+                if not in_string:
+                    in_string = True
+                    string_char = text[i]
+                elif text[i] == string_char:
+                    # Check for triple quotes
+                    if i + 2 < len(text) and text[i:i+3] == string_char * 3:
+                        i += 2  # Skip the next two quote chars
+                    else:
+                        in_string = False
+                        string_char = None
+            elif not in_string:
+                if text[i] == '(':
+                    paren_count += 1
+                elif text[i] == ')':
+                    paren_count -= 1
+            
+            if paren_count > 0:
+                i += 1
+        
+        if paren_count != 0:
+            return None
+        
+        # Extract arguments string (everything between parentheses)
+        args_str = text[start_pos:i]
+        
+        # Parse arguments with proper quote handling
         arguments = {}
         if args_str.strip():
-            # Simple argument parsing (key=value pairs)
-            arg_pattern = r'(\w+)=([^,]+)'
-            for arg_match in re.finditer(arg_pattern, args_str):
-                key = arg_match.group(1)
-                value = arg_match.group(2).strip().strip('"\'')
-                # Try to parse as number if possible
-                try:
-                    if '.' in value:
-                        value = float(value)
-                    else:
-                        value = int(value)
-                except ValueError:
-                    pass
-                arguments[key] = value
+            # More robust argument parsing that handles quoted strings
+            i = 0
+            while i < len(args_str):
+                # Skip whitespace
+                while i < len(args_str) and args_str[i] in ' \n\t':
+                    i += 1
+                if i >= len(args_str):
+                    break
+                
+                # Find key
+                key_match = re.match(r'(\w+)\s*=\s*', args_str[i:])
+                if not key_match:
+                    break
+                
+                key = key_match.group(1)
+                i += len(key_match.group(0))
+                
+                # Find value
+                if i >= len(args_str):
+                    break
+                
+                # Check if value starts with a quote
+                if args_str[i] in ['"', "'"]:
+                    quote_char = args_str[i]
+                    i += 1
+                    
+                    # Check for triple quotes
+                    is_triple_quote = False
+                    if i + 1 < len(args_str) and args_str[i:i+2] == quote_char * 2:
+                        is_triple_quote = True
+                        quote_char = quote_char * 3
+                        i += 2
+                    
+                    value_start = i
+                    value = ""
+                    
+                    # Find matching quote (handling escaped quotes)
+                    while i < len(args_str):
+                        if is_triple_quote:
+                            # For triple quotes, look for three consecutive quote chars
+                            if i + 2 < len(args_str) and args_str[i:i+3] == quote_char:
+                                i += 3
+                                break
+                            elif args_str[i] == '\\' and i + 1 < len(args_str):
+                                value += args_str[i:i+2]
+                                i += 2
+                            else:
+                                value += args_str[i]
+                                i += 1
+                        else:
+                            # For single/double quotes
+                            if args_str[i:i+len(quote_char)] == quote_char:
+                                i += len(quote_char)
+                                break
+                            elif args_str[i] == '\\' and i + 1 < len(args_str):
+                                value += args_str[i:i+2]
+                                i += 2
+                            else:
+                                value += args_str[i]
+                                i += 1
+                    
+                    arguments[key] = value
+                else:
+                    # Unquoted value - find until comma or end
+                    value_start = i
+                    paren_count = 0
+                    bracket_count = 0
+                    brace_count = 0
+                    
+                    while i < len(args_str):
+                        if args_str[i] == '(':
+                            paren_count += 1
+                        elif args_str[i] == ')':
+                            paren_count -= 1
+                        elif args_str[i] == '[':
+                            bracket_count += 1
+                        elif args_str[i] == ']':
+                            bracket_count -= 1
+                        elif args_str[i] == '{':
+                            brace_count += 1
+                        elif args_str[i] == '}':
+                            brace_count -= 1
+                        elif args_str[i] == ',' and paren_count == 0 and bracket_count == 0 and brace_count == 0:
+                            break
+                        i += 1
+                    
+                    value = args_str[value_start:i].strip()
+                    
+                    # Try to parse as number if possible
+                    try:
+                        if '.' in value:
+                            value = float(value)
+                        else:
+                            value = int(value)
+                    except ValueError:
+                        pass
+                    
+                    arguments[key] = value
+                
+                # Skip comma
+                while i < len(args_str) and args_str[i] in ', \n\t':
+                    i += 1
         
         return Action(tool_name=tool_name, arguments=arguments)
     
@@ -126,8 +253,9 @@ class REACTAgent:
             f"- {name}: {tool.description}"
             for name, tool in self.tools.items()
         ])
-        
-        return f"""You are an agent that is helping a user analyze their farm with satellite data
+        print(f"Tools description: {tools_description}")
+        return f"""You are an agent that is helping a user analyze their farm with satellite data. Use the python interpreter to analyze the satellite imagery and \
+            then aggregate the data into a recommendation.
 
 Available Tools:
 {tools_description}
@@ -212,7 +340,26 @@ def execute_python_code(code: str) -> str:
     Execute Python code in a safe, temporary subprocess.
     Returns stdout and stderr as a formatted string.
     """
-    print(f"Executing code: {code}")
+    # Decode escape sequences (e.g., \n -> actual newline, \\ -> \, etc.)
+    # The code string may contain literal escape sequences that need to be converted
+    try:
+        # Use bytes decode with unicode_escape to properly handle all escape sequences
+        # This converts literal \n to actual newlines, \\ to \, etc.
+        code = code.encode('latin-1').decode('unicode_escape')
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        # Fallback: manually replace common escape sequences
+        # First protect escaped backslashes
+        code = code.replace('\\\\', '\x00BS\x00')
+        # Replace escape sequences
+        code = code.replace('\\n', '\n').replace('\\t', '\t').replace('\\r', '\r')
+        code = code.replace('\\"', '"').replace("\\'", "'")
+        # Restore escaped backslashes
+        code = code.replace('\x00BS\x00', '\\')
+    except Exception:
+        # If all else fails, use code as-is
+        pass
+    
+    print(f"Executing code: {code[:100]}...")  # Print first 100 chars to avoid spam
     with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(textwrap.dedent(code))
         f.flush()
@@ -262,7 +409,7 @@ class AgriAgent(REACTAgent):
         ))
         self.register_tool(Tool(
             name="execute_code",
-            description="Execute Python code in a safe subprocess. Returns stdout and stderr. Usage: execute_code(code='print(\"Hello\")')",
+            description="Execute Python code in a safe subprocess. Returns stdout and stderr. Usage: execute_code(code='print(\"def fib(n):\\n    a, b = 0, 1\\n    for _ in range(n):\\n        a, b = b, a + b\\n    return a\\nprint(\"Fib(10):\", fib(10))')",
             func=execute_python_code
         ))
         self.bounding_points = []
@@ -290,7 +437,7 @@ def main():
         return
     
     # Create agent
-    agent = REACTAgent(api_key=api_key)
+    agent = AgriAgent(api_key=api_key)
     
     
     
