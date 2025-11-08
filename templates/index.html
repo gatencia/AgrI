@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AgrI - Farm Analysis Agent</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            display: flex;
+            height: 100vh;
+            width: 100%;
+        }
+        
+        /* Map Section - Left 2/3 */
+        .map-container {
+            flex: 2;
+            position: relative;
+            background: #e0e0e0;
+        }
+        
+        #map {
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+        }
+        
+        .map-controls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .bbox-button {
+            padding: 12px 20px;
+            background: white;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            color: #667eea;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        .bbox-button:hover {
+            background: #f0f0ff;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        
+        .bbox-button.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .bbox-button.active:hover {
+            background: #5568d3;
+        }
+        
+        .bbox-info {
+            background: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 12px;
+            color: #666;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            display: none;
+        }
+        
+        .bbox-info.visible {
+            display: block;
+        }
+        
+        .clear-button {
+            padding: 8px 16px;
+            background: #ff4444;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 5px;
+        }
+        
+        .clear-button:hover {
+            background: #cc0000;
+            transform: translateY(-1px);
+        }
+        
+        /* Chat Section - Right 1/3 */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-left: 1px solid #ddd;
+            box-shadow: -2px 0 10px rgba(0,0,0,0.1);
+        }
+        
+        .chat-header {
+            padding: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .chat-header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .chat-header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #fafafa;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            animation: fadeIn 0.3s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .message.user {
+            text-align: right;
+        }
+        
+        .message.agent {
+            text-align: left;
+        }
+        
+        .message-bubble {
+            display: inline-block;
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            word-wrap: break-word;
+            line-height: 1.4;
+        }
+        
+        .message.user .message-bubble {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+        
+        .message.agent .message-bubble {
+            background: white;
+            color: #333;
+            border: 1px solid #e0e0e0;
+            border-bottom-left-radius: 4px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        .message-time {
+            font-size: 11px;
+            color: #999;
+            margin-top: 5px;
+            padding: 0 4px;
+        }
+        
+        .loading {
+            display: inline-block;
+            padding: 12px 16px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 18px;
+            border-bottom-left-radius: 4px;
+        }
+        
+        .loading-dots {
+            display: inline-flex;
+            gap: 4px;
+        }
+        
+        .loading-dots span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #667eea;
+            animation: bounce 1.4s infinite ease-in-out both;
+        }
+        
+        .loading-dots span:nth-child(1) {
+            animation-delay: -0.32s;
+        }
+        
+        .loading-dots span:nth-child(2) {
+            animation-delay: -0.16s;
+        }
+        
+        @keyframes bounce {
+            0%, 80%, 100% {
+                transform: scale(0);
+            }
+            40% {
+                transform: scale(1);
+            }
+        }
+        
+        .chat-input-container {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #ddd;
+        }
+        
+        .chat-input-wrapper {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+        
+        #chatInput {
+            flex: 1;
+            padding: 12px 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 24px;
+            font-size: 14px;
+            resize: none;
+            font-family: inherit;
+            outline: none;
+            transition: border-color 0.2s;
+            max-height: 120px;
+            overflow-y: auto;
+        }
+        
+        #chatInput:focus {
+            border-color: #667eea;
+        }
+        
+        #sendButton {
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 24px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            white-space: nowrap;
+        }
+        
+        #sendButton:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        #sendButton:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        
+        .error-message {
+            background: #fee;
+            color: #c33;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid #fcc;
+            margin-bottom: 15px;
+        }
+        
+        /* Scrollbar styling */
+        .chat-messages::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .chat-messages::-webkit-scrollbar-track {
+            background: #f1f1f1;
+        }
+        
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 3px;
+        }
+        
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Map Section -->
+        <div class="map-container">
+            <div class="map-controls">
+                <button id="bboxButton" class="bbox-button" onclick="toggleBoundingBoxMode()">
+                    Enable Bounding Box Select
+                </button>
+                <div id="bboxInfo" class="bbox-info">
+                    Click points on the map to add them to the bounding box
+                </div>
+                <button id="clearButton" class="clear-button" onclick="clearBoundingBox()" style="display: none;">
+                    Clear All Points
+                </button>
+            </div>
+            <div id="map"></div>
+        </div>
+        
+        <!-- Chat Section -->
+        <div class="chat-container">
+            <div class="chat-header">
+                <h1>AgrI Assistant</h1>
+                <p>Ask me about your farm analysis</p>
+            </div>
+            
+            <div class="chat-messages" id="chatMessages">
+                <div class="message agent">
+                    <div class="message-bubble">
+                        Hello! I'm your farm analysis assistant. I can help you analyze satellite data and answer questions about your farm. What would you like to know?
+                    </div>
+                    <div class="message-time">System</div>
+                </div>
+            </div>
+            
+            <div class="chat-input-container">
+                <div class="chat-input-wrapper">
+                    <textarea 
+                        id="chatInput" 
+                        placeholder="Type your message here..."
+                        rows="1"
+                    ></textarea>
+                    <button id="sendButton" onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // Initialize map
+        const map = L.map('map').setView([37.7749, -122.4194], 13); // Default to San Francisco
+        
+        // Add Esri World Imagery (Satellite) tiles
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: '© Esri &mdash; Source: Esri, Maxar, GeoEye, Earthstar Geographics, CNES/Airbus DS, USDA, USGS, AeroGRID, IGN, and the GIS User Community',
+            maxZoom: 19
+        }).addTo(map);
+        
+        // Bounding box selection state
+        let boundingBoxMode = false;
+        let boundingBoxPoints = [];
+        let boundingBoxPolygon = null;
+        let boundingBoxMarkers = [];
+        
+        // Bounding box button and info
+        const bboxButton = document.getElementById('bboxButton');
+        const bboxInfo = document.getElementById('bboxInfo');
+        const clearButton = document.getElementById('clearButton');
+        
+        function toggleBoundingBoxMode() {
+            boundingBoxMode = !boundingBoxMode;
+            
+            if (boundingBoxMode) {
+                bboxButton.textContent = 'Disable Bounding Box Select';
+                bboxButton.classList.add('active');
+                bboxInfo.classList.add('visible');
+                bboxInfo.textContent = 'Click points on the map to add them to the bounding box';
+                clearButton.style.display = 'block';
+                
+                // Disable map dragging
+                map.dragging.disable();
+                map.doubleClickZoom.disable();
+            } else {
+                bboxButton.textContent = 'Enable Bounding Box Select';
+                bboxButton.classList.remove('active');
+                bboxInfo.classList.remove('visible');
+                clearButton.style.display = 'none';
+                
+                // Re-enable map dragging
+                map.dragging.enable();
+                map.doubleClickZoom.enable();
+            }
+        }
+        
+        async function clearBoundingBox() {
+            // Clear from server
+            try {
+                await fetch('/api/bounding-box/clear', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+            } catch (error) {
+                console.error('Error clearing bounding box:', error);
+            }
+            
+            // Clear from map
+            boundingBoxPoints = [];
+            if (boundingBoxPolygon) {
+                map.removeLayer(boundingBoxPolygon);
+                boundingBoxPolygon = null;
+            }
+            boundingBoxMarkers.forEach(marker => map.removeLayer(marker));
+            boundingBoxMarkers = [];
+            
+            bboxInfo.textContent = 'Click points on the map to add them to the bounding box';
+        }
+        
+        function updatePolygon() {
+            // Remove previous polygon if exists
+            if (boundingBoxPolygon) {
+                map.removeLayer(boundingBoxPolygon);
+            }
+            
+            // Create polygon if we have at least 2 points
+            if (boundingBoxPoints.length >= 2) {
+                const latlngs = boundingBoxPoints.map(p => [p.lat, p.lng]);
+                
+                // If only 2 points, create a rectangle
+                if (boundingBoxPoints.length === 2) {
+                    const p1 = boundingBoxPoints[0];
+                    const p2 = boundingBoxPoints[1];
+                    const bounds = [
+                        [Math.min(p1.lat, p2.lat), Math.min(p1.lng, p2.lng)],
+                        [Math.max(p1.lat, p2.lat), Math.max(p1.lng, p2.lng)]
+                    ];
+                    boundingBoxPolygon = L.rectangle(bounds, {
+                        color: '#667eea',
+                        fillColor: '#667eea',
+                        fillOpacity: 0.2,
+                        weight: 2
+                    }).addTo(map);
+                } else {
+                    // Create polygon for 3+ points
+                    boundingBoxPolygon = L.polygon(latlngs, {
+                        color: '#667eea',
+                        fillColor: '#667eea',
+                        fillOpacity: 0.2,
+                        weight: 2
+                    }).addTo(map);
+                }
+            }
+        }
+        
+        // Handle map clicks in bounding box mode
+        map.on('click', async function(e) {
+            if (!boundingBoxMode) return;
+            
+            const lat = e.latlng.lat;
+            const lng = e.latlng.lng;
+            
+            // Add point to local array
+            boundingBoxPoints.push({ lat, lng });
+            
+            // Add marker
+            const marker = L.marker([lat, lng], {
+                icon: L.divIcon({
+                    className: 'bbox-marker',
+                    html: `<div style="
+                        width: 12px;
+                        height: 12px;
+                        background: #667eea;
+                        border: 2px solid white;
+                        border-radius: 50%;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                    "></div>`,
+                    iconSize: [12, 12]
+                })
+            }).addTo(map);
+            boundingBoxMarkers.push(marker);
+            
+            // Update polygon visualization
+            updatePolygon();
+            
+            // Save point to agent
+            try {
+                const response = await fetch('/api/bounding-box/point', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ lat, lng })
+                });
+                
+                const data = await response.json();
+                if (data.status === 'success') {
+                    bboxInfo.textContent = `Added point ${data.total_points}. Click to add more points.`;
+                    console.log('Point added:', data.point, 'Total:', data.total_points);
+                }
+            } catch (error) {
+                console.error('Error saving point:', error);
+                bboxInfo.textContent = 'Error saving point. Please try again.';
+            }
+        });
+        
+        // Load existing points on page load
+        async function loadBoundingPoints() {
+            try {
+                const response = await fetch('/api/bounding-box');
+                const data = await response.json();
+                
+                if (data.points && data.points.length > 0) {
+                    // Convert tuple format to object format
+                    boundingBoxPoints = data.points.map(p => ({ lat: p[0], lng: p[1] }));
+                    
+                    // Add markers and polygon
+                    boundingBoxPoints.forEach(point => {
+                        const marker = L.marker([point.lat, point.lng], {
+                            icon: L.divIcon({
+                                className: 'bbox-marker',
+                                html: `<div style="
+                                    width: 12px;
+                                    height: 12px;
+                                    background: #667eea;
+                                    border: 2px solid white;
+                                    border-radius: 50%;
+                                    box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                                "></div>`,
+                                iconSize: [12, 12]
+                            })
+                        }).addTo(map);
+                        boundingBoxMarkers.push(marker);
+                    });
+                    
+                    updatePolygon();
+                }
+            } catch (error) {
+                console.error('Error loading bounding points:', error);
+            }
+        }
+        
+        // Load points when page loads
+        loadBoundingPoints();
+        
+        // Chat functionality
+        const chatInput = document.getElementById('chatInput');
+        const chatMessages = document.getElementById('chatMessages');
+        const sendButton = document.getElementById('sendButton');
+        
+        // Auto-resize textarea
+        chatInput.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = Math.min(this.scrollHeight, 120) + 'px';
+        });
+        
+        // Send on Enter (but allow Shift+Enter for new line)
+        chatInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        
+        function addMessage(text, isUser = false, isError = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'agent'}`;
+            
+            const bubble = document.createElement('div');
+            bubble.className = isError ? 'error-message' : 'message-bubble';
+            bubble.textContent = text;
+            
+            const time = document.createElement('div');
+            time.className = 'message-time';
+            time.textContent = isUser ? 'You' : 'Agent';
+            
+            messageDiv.appendChild(bubble);
+            messageDiv.appendChild(time);
+            chatMessages.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function addLoadingMessage() {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message agent';
+            messageDiv.id = 'loadingMessage';
+            
+            const loading = document.createElement('div');
+            loading.className = 'loading';
+            loading.innerHTML = '<div class="loading-dots"><span></span><span></span><span></span></div>';
+            
+            messageDiv.appendChild(loading);
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+        
+        function removeLoadingMessage() {
+            const loadingMsg = document.getElementById('loadingMessage');
+            if (loadingMsg) {
+                loadingMsg.remove();
+            }
+        }
+        
+        async function sendMessage() {
+            const message = chatInput.value.trim();
+            if (!message || sendButton.disabled) return;
+            
+            // Add user message
+            addMessage(message, true);
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+            
+            // Disable input
+            sendButton.disabled = true;
+            chatInput.disabled = true;
+            addLoadingMessage();
+            
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+                
+                const data = await response.json();
+                
+                removeLoadingMessage();
+                
+                if (!response.ok) {
+                    addMessage(data.error || 'An error occurred', false, true);
+                } else {
+                    addMessage(data.response, false);
+                    
+                    // Optionally show observations if available
+                    if (data.observations && data.observations.length > 0) {
+                        const obsText = `\n\n[Used ${data.iterations} iterations]`;
+                        const obsDiv = document.createElement('div');
+                        obsDiv.className = 'message agent';
+                        obsDiv.innerHTML = `
+                            <div class="message-bubble" style="font-size: 12px; opacity: 0.7;">
+                                ${obsText}
+                            </div>
+                        `;
+                        chatMessages.appendChild(obsDiv);
+                    }
+                }
+            } catch (error) {
+                removeLoadingMessage();
+                addMessage('Failed to connect to server. Please try again.', false, true);
+                console.error('Error:', error);
+            } finally {
+                // Re-enable input
+                sendButton.disabled = false;
+                chatInput.disabled = false;
+                chatInput.focus();
+            }
+        }
+        
+        // Update map bounds when user moves the map (for future use)
+        map.on('moveend', function() {
+            const bounds = map.getBounds();
+            // Could send bounds to server if needed
+            // fetch('/api/map/bounds', {
+            //     method: 'POST',
+            //     headers: { 'Content-Type': 'application/json' },
+            //     body: JSON.stringify({
+            //         north: bounds.getNorth(),
+            //         south: bounds.getSouth(),
+            //         east: bounds.getEast(),
+            //         west: bounds.getWest()
+            //     })
+            // });
+        });
+    </script>
+</body>
+</html>
+

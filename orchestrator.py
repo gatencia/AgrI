@@ -198,6 +198,25 @@ Action: [tool_name(arguments)] or Final Answer: [answer]"""
         return f"Reached maximum iterations ({self.max_iterations}). Last observations: {'; '.join(self.observation_history[-3:])}"
 
 
+def get_weather(location: str) -> str:
+    """Placeholder weather function. Replace with actual weather API integration."""
+    return f"Weather data for {location} would be retrieved here. (Placeholder)"
+
+
+class AgriAgent(REACTAgent):
+    """
+    An agent that is specialized in agriculture.
+    """
+    def __init__(self, api_key: str, model: str = "openai/gpt-4o-mini"):
+        super().__init__(api_key, model)
+        self.tools = [
+            Tool(name="get_weather", description="Get the weather for a given location", func=get_weather)
+        ]
+        self.bounding_points = []
+    
+    def add_bounding_point(self, point: tuple[float, float]):
+        """Add a bounding point to the agent."""
+        self.bounding_points.append(point)
 
 def main():
     """Example usage of the REACT agent."""
