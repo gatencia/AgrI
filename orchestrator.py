@@ -8,6 +8,10 @@ import re
 from typing import Dict, List, Any, Optional, Callable
 from dataclasses import dataclass
 import requests
+import subprocess
+import tempfile
+import textwrap
+import os
 
 
 @dataclass
@@ -52,7 +56,7 @@ class REACTAgent:
     4. Repeat until task is complete
     """
     
-    def __init__(self, api_key: str, model: str = "openai/gpt-4o-mini"):
+    def __init__(self, api_key: str, model: str = "openai/gpt-5-mini"):
         self.api_key = api_key
         self.model = model
         self.api_url = "https://openrouter.ai/api/v1/chat/completions"
@@ -203,15 +207,64 @@ def get_weather(location: str) -> str:
     return f"Weather data for {location} would be retrieved here. (Placeholder)"
 
 
+def execute_python_code(code: str) -> str:
+    """
+    Execute Python code in a safe, temporary subprocess.
+    Returns stdout and stderr as a formatted string.
+    """
+    print(f"Executing code: {code}")
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
+        f.write(textwrap.dedent(code))
+        f.flush()
+        temp_file_path = f.name
+    
+    try:
+        result = subprocess.run(
+            ["python", temp_file_path],
+            capture_output=True,
+            text=True,
+            timeout=10  # safety timeout
+        )
+        
+        output_parts = []
+        if result.stdout.strip():
+            output_parts.append(f"Output:\n{result.stdout.strip()}")
+        if result.stderr.strip():
+            output_parts.append(f"Errors:\n{result.stderr.strip()}")
+        if result.returncode != 0:
+            output_parts.append(f"Return code: {result.returncode}")
+        
+        return "\n".join(output_parts) if output_parts else "Code executed successfully (no output)"
+    
+    except subprocess.TimeoutExpired:
+        return "Error: Execution timed out after 10 seconds"
+    except Exception as e:
+        return f"Error executing code: {str(e)}"
+    finally:
+        # Clean up temporary file
+        try:
+            os.unlink(temp_file_path)
+        except:
+            pass
+
+
 class AgriAgent(REACTAgent):
     """
     An agent that is specialized in agriculture.
     """
     def __init__(self, api_key: str, model: str = "openai/gpt-4o-mini"):
         super().__init__(api_key, model)
-        self.tools = [
-            Tool(name="get_weather", description="Get the weather for a given location", func=get_weather)
-        ]
+        # Register tools using the proper method
+        self.register_tool(Tool(
+            name="get_weather",
+            description="Get the weather for a given location. Usage: get_weather(location='San Francisco')",
+            func=get_weather
+        ))
+        self.register_tool(Tool(
+            name="execute_code",
+            description="Execute Python code in a safe subprocess. Returns stdout and stderr. Usage: execute_code(code='print(\"Hello\")')",
+            func=execute_python_code
+        ))
         self.bounding_points = []
     
     def add_bounding_point(self, point: tuple[float, float]):
@@ -242,7 +295,7 @@ def main():
     
     
     # Example task
-    task = "Calculate 15 * 23"
+    task = "Write and test a python script that computes the n'th fibonacci number using your tools"
     
     print(f"Task: {task}\n")
     print("Running REACT agent...\n")
